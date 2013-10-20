@@ -47,10 +47,16 @@ int select = 0;
 
 //Variables
 boolean isbeating = 0;
+boolean isflashing = 0;
+
+double t_flash = 0;
+double last_updated;
+int beats;
 int curVal = analogRead(plePin); // current sample
 int dcurVal = 0;
 int sig[WL]; // Last 5 seconds of signal
 int dsig[WL-1]; // Derivative of signal
+double thresh = 200; // Threshold for beat detection
 
 void setup()
 {
@@ -64,6 +70,11 @@ void setup()
     sig[a] = analogRead(plePin);
     if (a != 0){
       dsig[a-1] = sig[a] - sig[a-1];
+    }
+    //Serial.println(0.7*double(dsig[a-1]));
+    if (0.7*double(dsig[a-1]) > thresh){
+      thresh = 0.7*double(dsig[a-1]);
+
     }
     delay(TS);
   }
@@ -80,27 +91,21 @@ void loop()
       lcd.setCursor(0,0);
       lcd.print("HRMon");
 
-
       // update signal
       curVal = analogRead(plePin);
       dcurVal = curVal-sig[WL-1];
-      
+
+      // update arrays
       updatevar(dsig,WL-1,dcurVal);
       updatevar(sig, WL, curVal);
 
-      isbeating = curVal > 600;
+      checkForBeats();
+      if (millis()>last_updated+5000){
+        updateHR();
+      }
 
-      if (isbeating) {
-        lcd.setCursor(0,1);
-        lcd.write(byte(0));
-      }
-      else {        
-        lcd.setCursor(0,1);
-        lcd.print(" ");
-      }
-      
-      sendPlotData("Signal",sig[WL-1]);
-      sendPlotData("dS/dt",dsig[WL-2]);
+      //sendPlotData("Signal",sig[WL-1]);
+      //sendPlotData("dS/dt",dsig[WL-2]);
 
       stateswitch(); //check if should switch states
       break;
@@ -124,5 +129,35 @@ void updatevar(int *arr,int len,int newVal){
     arr[a] = arr[a+1];
   }
   arr[len-1] = newVal;
+}
+
+void updateHR(){
+  
+  last_updated = millis();
+  
+  lcd.setCursor(3,1);
+  lcd.print(beats*12);
+  lcd.print(" BPM");
+  beats = 0;
+}
+
+void checkForBeats(){
+
+  isbeating = dcurVal > thresh;
+
+  if (isbeating && !isflashing && millis() > t_flash+200 ) {
+    isflashing = 1;
+    beats++;
+    t_flash = millis();
+    lcd.setCursor(0,1);
+    lcd.write(byte(0));
+  }
+
+  if (millis() > t_flash+200) {
+    isflashing = 0;
+    lcd.setCursor(0,1);
+    lcd.print(" ");
+  }
+
 }
 
