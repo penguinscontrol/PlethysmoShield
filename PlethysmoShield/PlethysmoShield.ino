@@ -47,10 +47,10 @@ int select = 0;
 
 //Variables
 boolean isbeating = 0;
-double curVal = double(analogRead(plePin)); // current sample
-double dcurVal = 0;
-double sig[WL]; // Last 5 seconds of signal
-double dsig[WL-1]; // Derivative of signal
+int curVal = analogRead(plePin); // current sample
+int dcurVal = 0;
+int sig[WL]; // Last 5 seconds of signal
+int dsig[WL-1]; // Derivative of signal
 
 void setup()
 {
@@ -82,7 +82,7 @@ void loop()
 
 
       // update signal
-      curVal = double(analogRead(plePin));
+      curVal = analogRead(plePin);
       dcurVal = curVal-sig[WL-1];
       
       updatevar(dsig,WL-1,dcurVal);
@@ -119,7 +119,7 @@ void loop()
   }
 }
 
-void updatevar(double *arr,int len,double newVal){
+void updatevar(int *arr,int len,int newVal){
   for (int a = 0; a < len-1; a++){
     arr[a] = arr[a+1];
   }
