@@ -1,5 +1,4 @@
 #include <LiquidCrystal.h>
-#include <QueueArray.h>
 
 //Define sampling parameters
 #define TS 20 // Sampling rate of 50 Hz
@@ -48,7 +47,7 @@ int select = 0;
 
 //Variables
 boolean isbeating = 0;
-double curVal = analogRead(plePin); // current sample
+double curVal = double(analogRead(plePin)); // current sample
 double dcurVal = 0;
 double sig[WL]; // Last 5 seconds of signal
 double dsig[WL-1]; // Derivative of signal
@@ -120,10 +119,10 @@ void loop()
   }
 }
 
-void updatevar(double *arr,int len,int newVal){
+void updatevar(double *arr,int len,double newVal){
   for (int a = 0; a < len-1; a++){
     arr[a] = arr[a+1];
   }
-  arr[len-1] = double(newVal);
+  arr[len-1] = newVal;
 }
 
