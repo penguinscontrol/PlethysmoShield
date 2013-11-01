@@ -1,0 +1,373 @@
+// Demonstration of extracellular stimulation
+// Leo Medina 2013-10-28 
+
+load_file("nrngui.hoc")
+// load_proc("nrnmainmenu")
+
+// ----------------------- Global Variables ----------------------------------
+
+//Fiber
+D1 = 12          // fiber diameter in um (1e-6 m)
+D2 = 20
+N_NODES = 21    //number of nodes
+INL1 = 100*D1     //internodal length in um (1e-6 m)
+INL2 = 100*D2
+rhoa = 100      // axial resistivity (ohm-cm)
+Vo = 0       //initial potential
+
+//Stimulus
+PW = 0.100        // pulse width in ms
+DELAY = 0       //in ms
+E2F_DIST1 = 1    //electrode to fiber distance in mm (1e-3 m)
+E2F_DIST2 = 1
+//medium
+sigma_e = 2e-4 //S/mm
+
+AMPLITUDE = -5e7 //cathodic, check units! (nA)
+OLD_AMPLITUDE = AMPLITUDE
+MIN_AMP = -1e8
+MAX_AMP = 0
+//simulation
+dt = 1e-4
+tstop = 2*PW
+// ----------------------- Creating Axon -------------------------------------
+create node1[N_NODES]
+create node2[N_NODES]
+// initializing axon
+
+proc resetGuesses(){
+x = $1
+AMPLITUDE = x/2 //cathodic, check units! (nA)
+OLD_AMPLITUDE = AMPLITUDE
+if (x>0){
+MAX_AMP = x
+MIN_AMP = 0
+} else {
+MAX_AMP = 0
+MIN_AMP = x
+}
+}
+
+proc initialize(){
+
+  for i=0, N_NODES-1 {
+		node1[i]{
+			nseg = 1
+			diam = 0.7*D1  // node diameter (um) (1e-6 m)
+			L    = 1		 // node length (um) (1e-6 m)
+			Ra   = rhoa*( (L + INL1) / L )  // trick to account for internodal resistance
+			cm   = 1							 // specific membrane capacitance (uF/cm^2)
+			insert pas
+				g_pas = 2000^(-1) // /ohm/cm2
+				e_pas = 0
+			insert extracellular   // for extracellular stimulation 
+		}
+	}
+  
+  for i=0, N_NODES-1 {
+		node2[i]{
+			nseg = 1
+			diam = 0.7*D2  		// node diameter (um)
+			L    = 1		 	// node length (um)
+			Ra   = rhoa*( (L + INL2) / L )  	// trick to account for internodal resistance 
+			cm   = 1						// specific membrane capacitance (uF/cm^2)
+			
+			insert pas
+				g_pas = 2000^(-1) // /ohm/cm2
+				e_pas = 0
+			insert extracellular   // for extracellular stimulation 
+		}
+	}
+
+  for i=0, N_NODES-2 {
+		connect node1[i](1), node1[i+1](0)
+		connect node2[i](1), node2[i+1](0)
+  }
+	finitialize(Vo)
+}
+initialize()
+
+//for keeping track of node positions and Ve at nodes
+objref x_axon1, phi_e1, x_axon2, phi_e2
+x_axon1 = new Vector(N_NODES,0)
+phi_e1 = new Vector(N_NODES,0)
+x_axon2 = new Vector(N_NODES,0)
+phi_e2 = new Vector(N_NODES,0)
+
+for i=0, N_NODES-1{
+		x_axon1.x[i] = -(N_NODES-1)/2*INL1 + INL1*i   //centered at middle node. Only for odd N_NODES (in um! 1e-6 m)
+		x_axon2.x[i] = -(N_NODES-1)/2*INL2 + INL2*i   //centered at middle node. Only for odd N_NODES
+}
+x_axon1.mul(1e-3) //convert from um to mm
+x_axon2.mul(1e-3) //convert from um to mm
+
+// for recording membrane potentials
+objref vol_mem1[N_NODES]
+objref vol_mem2[N_NODES]
+for i=0, N_NODES-1{
+	vol_mem1[i] = new Vector(tstop/dt,0)
+	vol_mem1[i].record(&node1[i].v(0.5))
+	vol_mem2[i] = new Vector(tstop/dt,0)
+	vol_mem2[i].record(&node2[i].v(0.5))		
+}
+
+//dummy stimulus only to control waveform parameters
+//The 'dummy' section has nothing to do with the fiber
+objref dummystim
+create dummy
+dummy dummystim = new IClamp(0.5)	// 0.5 is the normalized location
+dummystim.del = DELAY
+dummystim.dur = PW
+dummystim.amp = AMPLITUDE
+
+
+// extracellular potentials
+proc potential_field(){
+c = $1
+if (c == 1) {
+	for a=0, N_NODES-1{
+		r = sqrt(x_axon1.x[a]^2+E2F_DIST1^2) //in mm. Note that we are assuming that the electrode is at position (0,0,E2F_DIST1) i.e. over the middle node
+		phi_e1.x[a] = dummystim.i/(4*sigma_e*PI*r) // check units!!!! nA/(/Ohm/mm*mm) -> nV
+		node1[a].e_extracellular(0.5) = phi_e1.x[a]
+		r = sqrt(x_axon2.x[a]^2+E2F_DIST2^2) //in mm. Note that we are assuming that the electrode is at position (0,0,E2F_DIST2) i.e. over the middle node
+		phi_e2.x[a] = dummystim.i/(4*sigma_e*PI*r) // check units!!!!
+		node2[a].e_extracellular(0.5) = phi_e2.x[a]
+	}
+}
+if (c == 2) {
+	for b=0, N_NODES-1{
+		r = sqrt((x_axon1.x[b]-(INL1*(1e-3)/2))^2+E2F_DIST1^2) //in mm. Note that we are assuming that the electrode is at position (0,0,E2F_DIST1) i.e. over the middle node
+		phi_e1.x[b] = dummystim.i/(4*sigma_e*PI*r) // check units!!!!
+		node1[b].e_extracellular(0.5) = phi_e1.x[b]*(1e-6) //mV
+		r = sqrt((x_axon2.x[b]-(INL2*(1e-3)/2))^2+E2F_DIST2^2) //in mm. Note that we are assuming that the electrode is at position (0,0,E2F_DIST2) i.e. over the middle node
+		phi_e2.x[b] = dummystim.i/(4*sigma_e*PI*r) // check units!!!!
+		node2[b].e_extracellular(0.5) = phi_e2.x[b]
+	}
+}
+}
+
+// time integrate with constant time step size
+proc stimulate(){
+	x = $1
+	dummystim.amp = AMPLITUDE
+	finitialize(Vo)
+	while (t<tstop) {	
+		potential_field(x)
+		fadvance()		
+	}	
+}
+
+objref Distances
+Distances = new Vector()
+Distances.append(10)
+Distances.append(7.8476)
+Distances.append(6.1585)
+Distances.append(4.8329)
+Distances.append(3.7927)
+Distances.append(2.9764)
+Distances.append(2.3357)
+Distances.append(1.8330)
+Distances.append(1.4384)
+Distances.append(1.1288)
+Distances.append(0.8859)
+Distances.append(0.6952)
+Distances.append(0.5456)
+Distances.append(0.4281)
+Distances.append(0.3360)
+Distances.append(0.2637)
+Distances.append(0.2069)
+Distances.append(0.1624)
+Distances.append(0.1274)
+Distances.append(0.1)
+
+
+objref Ithresh[4]
+Ithresh[0] = new Vector(0,0)
+Ithresh[1] = new Vector(0,0)
+Ithresh[2] = new Vector(0,0)
+Ithresh[3] = new Vector(0,0)
+// find peak
+proc findIthresh(){ //#1 is electrode position, #2 is fiber
+	x = $1
+	y = $2
+	stimulate(x)
+	cur_max = find_max(y)
+	while (cur_max > 20.1 || cur_max < 19.9){
+		print "Trying Stimulus of ", AMPLITUDE
+		if (cur_max > 20.1){
+		OLD_AMPLITUDE = AMPLITUDE
+		AMPLITUDE = (MAX_AMP+AMPLITUDE)/2
+		MIN_AMP = OLD_AMPLITUDE
+		}
+		if (cur_max < 19.9){
+		OLD_AMPLITUDE = AMPLITUDE
+		AMPLITUDE = (MIN_AMP+AMPLITUDE)/2
+		MAX_AMP = OLD_AMPLITUDE
+		}
+		stimulate(x)
+		cur_max = find_max(y)
+	}
+	print "Found one!"
+	if (x == 1 && y == 1){
+	Ithresh[0].append(AMPLITUDE)
+	}
+	if (x == 1 && y == 2){
+	Ithresh[1].append(AMPLITUDE)
+	}
+	if (x == 2 && y == 1){
+	Ithresh[2].append(AMPLITUDE)
+	}
+	if (x == 2 && y == 2){
+	Ithresh[3].append(AMPLITUDE)
+	}
+}
+
+objref IthreshA[4]
+IthreshA[0] = new Vector(0,0)
+IthreshA[1] = new Vector(0,0)
+IthreshA[2] = new Vector(0,0)
+IthreshA[3] = new Vector(0,0)
+// find peak
+
+func find_max(){
+x = $1
+maximum = 0
+if (x == 1){
+	for a = 0, (N_NODES-1) {
+	if (maximum < vol_mem1[a].max()){
+	maximum = vol_mem1[a].max()
+	}
+	}
+}
+if (x == 2){
+	for a = 0, (N_NODES-1) {
+	if (maximum < vol_mem2[a].max()){
+	maximum = vol_mem2[a].max()
+	}
+	}
+}
+
+return maximum
+}
+
+proc findIthreshA(){ //#1 is electrode position, #2 is fiber
+	x = $1
+	y = $2
+	stimulate(x)
+	cur_max = find_max(y)
+	
+	while (cur_max > 20.1 || cur_max < 19.9){
+		print "Trying Stimulus of ", AMPLITUDE
+		if (cur_max < 19.9){
+		OLD_AMPLITUDE = AMPLITUDE
+		AMPLITUDE = (MAX_AMP+AMPLITUDE)/2
+		MIN_AMP = OLD_AMPLITUDE
+		}
+		if (cur_max > 20.1){
+		OLD_AMPLITUDE = AMPLITUDE
+		AMPLITUDE = (MIN_AMP+AMPLITUDE)/2
+		MAX_AMP = OLD_AMPLITUDE
+		}
+		stimulate(x)
+		cur_max = find_max(y)
+	}
+	print "Found one!"
+	if (x == 1 && y == 1){
+	Amplitude1 = AMPLITUDE
+	}
+	if (x == 1 && y == 2){
+	Amplitude2 = AMPLITUDE
+	}
+	if (x == 2 && y == 1){
+	Amplitude3 = AMPLITUDE
+	}
+	if (x == 2 && y == 2){
+	Amplitude4 = AMPLITUDE
+	}
+}
+
+
+// ----------------------- Debugging -----------------------------------------
+/*
+AMPLITUDE = -1e-1
+stimulate(2)
+objref p
+p = new Graph()
+p.size(0,tstop,0,20)
+vol_mem1[11].plot(p,dt,2,4)
+*/
+//------------------------RUN-------------------------------------------------
+print "Fiber 1 at internode"
+resetGuesses(-1e5)
+
+E2F_DIST1 = 1e1
+for count3 = 0,19 {
+E2F_DIST1 = Distances.x[count3]
+findIthresh(2,1)
+resetGuesses(-1e2)
+}
+
+print "Fiber 2 at internode"
+resetGuesses(-1e5)
+
+E2F_DIST2 = 1e1
+for count4 = 0,19 {
+E2F_DIST2 = Distances.x[count4]
+findIthresh(2,2)
+resetGuesses(-1e2)
+}
+
+print "Fiber 1 at the Node"
+resetGuesses(-1e2)
+E2F_DIST2 = 1e1
+for count1 = 0,19 {
+E2F_DIST1 = Distances.x[count1]
+findIthresh(1,1)
+resetGuesses(-1e2)
+}
+
+print "Fiber 2 at the Node"
+resetGuesses(-1e2)
+
+E2F_DIST2 = 1e1
+for count2 = 0,19 {
+E2F_DIST2 = Distances.x[count2]
+findIthresh(1,2)
+resetGuesses(-1e2)
+}
+
+objref sav1, sav2, sav3, sav4
+
+sav1 = new File()
+sav2 = new File()
+sav3 = new File()
+sav4 = new File()
+
+sav1.wopen("d1_1.dat")
+sav2.wopen("d1_2.dat")
+sav3.wopen("d2_1.dat")
+sav4.wopen("d2_2.dat")
+
+
+Ithresh[0].printf(sav1)
+Ithresh[1].printf(sav2)
+Ithresh[2].printf(sav3)
+Ithresh[3].printf(sav4)
+
+sav1.close()
+sav2.close()
+sav3.close()
+sav4.close()
+
+print "Doing 2C"
+
+E2F_DIST2 = 1
+E2F_DIST1 = 1
+resetGuesses(1e6)
+findIthreshA(1,1)
+resetGuesses(1e6)
+findIthreshA(1,2)
+resetGuesses(1e6)
+findIthreshA(2,1)
+resetGuesses(1e6)
+findIthreshA(2,2)
