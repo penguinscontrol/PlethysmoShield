@@ -10,8 +10,8 @@
 close all;clc; clear all;
 %% Initialize variables.
 filename{1} = 'C:\Users\Radu\Documents\GitHub\PlethysmoShield\New folder\d1_1.dat';
-filename{2} = 'C:\Users\Radu\Documents\GitHub\PlethysmoShield\New folder\d1_2.dat';
-filename{3} = 'C:\Users\Radu\Documents\GitHub\PlethysmoShield\New folder\d2_1.dat';
+filename{2} = 'C:\Users\Radu\Documents\GitHub\PlethysmoShield\New folder\d2_1.dat';
+filename{3} = 'C:\Users\Radu\Documents\GitHub\PlethysmoShield\New folder\d1_2.dat';
 filename{4} = 'C:\Users\Radu\Documents\GitHub\PlethysmoShield\New folder\d2_2.dat';
 filename{5} = 'C:\Users\Radu\Documents\GitHub\PlethysmoShield\New folder\forfit1.dat';
 filename{6} = 'C:\Users\Radu\Documents\GitHub\PlethysmoShield\New folder\forfit2.dat';
@@ -58,8 +58,6 @@ d = logspace(-1,1,20);
 figure(1);
 for a = 1:4
 loglog(d(end:-1:1),abs(data{a}));
-ylabel('Threshold current (mA)');
-xlabel('Electrode to fiber distance');
 hold all;
 end
 legend('fiber 1 @ node','fiber 2 @ node','fiber 1 @ internode','fiber 2 @ internode',0)
@@ -67,8 +65,6 @@ legend('fiber 1 @ node','fiber 2 @ node','fiber 1 @ internode','fiber 2 @ intern
 figure(2);
 for a = 1:4
 semilogx(d(end:-1:1),abs(data{a}));
-ylabel('Threshold current (mA)');
-xlabel('Electrode to fiber distance');
 hold all;
 end
 legend('fiber 1 @ node','fiber 2 @ node','fiber 1 @ internode','fiber 2 @ internode',0)
@@ -79,7 +75,7 @@ fib1node=0.42724609;
 fib2node=0.53100586;
 fib1inter=0.39367676;
 fib2inter=0.54931641;
-dt = 1e-4;
+dt = 1e-3;
 for a = 5:10
     figure();
     these_data = data{a}(floor(end/2):end);
@@ -103,15 +99,13 @@ semilogx(distances,R2fib2,'ks');
 title('Goodness of fit vs distance');
 xlabel('Electrode to fiber distance (mm)');
 ylabel('R^2 for exponential fit');
-legend('fiber 1', 'fiber 2')
 
-coeff = cell2mat(fit_coeffs);
-tau = coeff([1 3 5 7 9 11]).^-1;
+R2fib1 = cell2mat(fit_coeffs);
+R2fib2 = cell2mat(R2(8:10));
 figure();
-semilogx(distances,-tau(1:3),'ko');
+semilogx(distances,R2fib1,'ko');
 hold on;
-semilogx(distances,-tau(4:6),'ks');
-title('Time constant vs distance');
+semilogx(distances,R2fib2,'ks');
+title('Goodness of fit vs distance');
 xlabel('Electrode to fiber distance (mm)');
-ylabel('Time constant from exponential fit (ms)');
-legend('fiber 1', 'fiber 2')
+ylabel('R^2 for exponential fit');

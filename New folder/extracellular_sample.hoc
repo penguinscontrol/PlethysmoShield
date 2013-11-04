@@ -1,5 +1,6 @@
-// Demonstration of extracellular stimulation
-// Leo Medina 2013-10-28 
+// HW3
+// Radu Darie 2013-11-1
+// adapted from demostration by Leo Medina 2013-10-28 
 
 load_file("nrngui.hoc")
 // load_proc("nrnmainmenu")
@@ -35,10 +36,8 @@ create node1[N_NODES]
 create node2[N_NODES]
 // initializing axon
 
-proc resetGuesses(){
+proc resetGuesses(){ local x
 x = $1
-AMPLITUDE = x/2 //cathodic, check units! (nA)
-OLD_AMPLITUDE = AMPLITUDE
 if (x>0){
 MAX_AMP = x
 MIN_AMP = 0
@@ -46,6 +45,8 @@ MIN_AMP = 0
 MAX_AMP = 0
 MIN_AMP = x
 }
+AMPLITUDE = (MAX_AMP+MIN_AMP)/2 //cathodic, check units! (nA)
+OLD_AMPLITUDE = AMPLITUDE
 }
 
 proc initialize(){
@@ -104,6 +105,7 @@ x_axon2.mul(1e-3) //convert from um to mm
 // for recording membrane potentials
 objref vol_mem1[N_NODES]
 objref vol_mem2[N_NODES]
+
 for i=0, N_NODES-1{
 	vol_mem1[i] = new Vector(tstop/dt,0)
 	vol_mem1[i].record(&node1[i].v(0.5))
@@ -122,24 +124,26 @@ dummystim.amp = AMPLITUDE
 
 
 // extracellular potentials
-proc potential_field(){
+proc potential_field(){ local a,b,c
+
 c = $1
-if (c == 1) {
+if (c == 2) { //if stimulating at internode
 	for a=0, N_NODES-1{
-		r = sqrt(x_axon1.x[a]^2+E2F_DIST1^2) //in mm. Note that we are assuming that the electrode is at position (0,0,E2F_DIST1) i.e. over the middle node
+		r = sqrt((x_axon1.x[a]+INL1/2e3)^2+E2F_DIST1^2) //in mm. Note that we are assuming that the electrode is at position (0,0,E2F_DIST1) i.e. over the middle node
 		phi_e1.x[a] = dummystim.i/(4*sigma_e*PI*r) // check units!!!! nA/(/Ohm/mm*mm) -> nV
 		node1[a].e_extracellular(0.5) = phi_e1.x[a]
-		r = sqrt(x_axon2.x[a]^2+E2F_DIST2^2) //in mm. Note that we are assuming that the electrode is at position (0,0,E2F_DIST2) i.e. over the middle node
+		r = sqrt((x_axon2.x[a]+INL2/2e3)^2+E2F_DIST2^2) //in mm. Note that we are assuming that the electrode is at position (0,0,E2F_DIST2) i.e. over the middle node
 		phi_e2.x[a] = dummystim.i/(4*sigma_e*PI*r) // check units!!!!
 		node2[a].e_extracellular(0.5) = phi_e2.x[a]
 	}
 }
-if (c == 2) {
+
+if (c == 1) { //if stimulating at node
 	for b=0, N_NODES-1{
-		r = sqrt((x_axon1.x[b]-(INL1*(1e-3)/2))^2+E2F_DIST1^2) //in mm. Note that we are assuming that the electrode is at position (0,0,E2F_DIST1) i.e. over the middle node
-		phi_e1.x[b] = dummystim.i/(4*sigma_e*PI*r) // check units!!!!
-		node1[b].e_extracellular(0.5) = phi_e1.x[b]*(1e-6) //mV
-		r = sqrt((x_axon2.x[b]-(INL2*(1e-3)/2))^2+E2F_DIST2^2) //in mm. Note that we are assuming that the electrode is at position (0,0,E2F_DIST2) i.e. over the middle node
+		r = sqrt(x_axon1.x[b]^2+E2F_DIST1^2) //in mm. Note that we are assuming that the electrode is at position (0,0,E2F_DIST1) i.e. over the middle node
+		phi_e1.x[b] = dummystim.i/(4*sigma_e*PI*r) // check units!!!! nA/(/Ohm/mm*mm) -> nV
+		node1[b].e_extracellular(0.5) = phi_e1.x[b]
+		r = sqrt(x_axon2.x[b]^2+E2F_DIST2^2) //in mm. Note that we are assuming that the electrode is at position (0,0,E2F_DIST2) i.e. over the middle node
 		phi_e2.x[b] = dummystim.i/(4*sigma_e*PI*r) // check units!!!!
 		node2[b].e_extracellular(0.5) = phi_e2.x[b]
 	}
@@ -147,7 +151,7 @@ if (c == 2) {
 }
 
 // time integrate with constant time step size
-proc stimulate(){
+proc stimulate(){ local x
 	x = $1
 	dummystim.amp = AMPLITUDE
 	finitialize(Vo)
@@ -157,7 +161,7 @@ proc stimulate(){
 	}	
 }
 
-objref Distances
+objref Distances // log spaced distances between 10 and 0.1 mm
 Distances = new Vector()
 Distances.append(10)
 Distances.append(7.8476)
@@ -181,13 +185,13 @@ Distances.append(0.1274)
 Distances.append(0.1)
 
 
-objref Ithresh[4]
-Ithresh[0] = new Vector(0,0)
-Ithresh[1] = new Vector(0,0)
-Ithresh[2] = new Vector(0,0)
-Ithresh[3] = new Vector(0,0)
+objref Ithresh1, Ithresh2, Ithresh3, Ithresh4
+Ithresh1 = new Vector(0,0)
+Ithresh2 = new Vector(0,0)
+Ithresh3 = new Vector(0,0)
+Ithresh4 = new Vector(0,0)
 // find peak
-proc findIthresh(){ //#1 is electrode position, #2 is fiber
+proc findIthresh(){ local x,y //#1 is electrode position, #2 is fiber
 	x = $1
 	y = $2
 	stimulate(x)
@@ -207,57 +211,64 @@ proc findIthresh(){ //#1 is electrode position, #2 is fiber
 		stimulate(x)
 		cur_max = find_max(y)
 	}
-	print "Found one!"
+	print "found one ",x," ",y
 	if (x == 1 && y == 1){
-	Ithresh[0].append(AMPLITUDE)
+	Ithresh1.append(AMPLITUDE)
+	//print "Found one! i1"
 	}
+	
 	if (x == 1 && y == 2){
-	Ithresh[1].append(AMPLITUDE)
+	Ithresh2.append(AMPLITUDE)
+	//print "Found one! i2"
 	}
+	
 	if (x == 2 && y == 1){
-	Ithresh[2].append(AMPLITUDE)
+	Ithresh3.append(AMPLITUDE)
+	//print "Found one! i3"
 	}
+	
 	if (x == 2 && y == 2){
-	Ithresh[3].append(AMPLITUDE)
+	Ithresh4.append(AMPLITUDE)
+	//print "Found one! i4"
 	}
 }
 
-objref IthreshA[4]
-IthreshA[0] = new Vector(0,0)
-IthreshA[1] = new Vector(0,0)
-IthreshA[2] = new Vector(0,0)
-IthreshA[3] = new Vector(0,0)
 // find peak
-
-func find_max(){
-x = $1
+where = 0
+func find_max(){ local whichfiber,maximum,a,b
+whichfiber = $1
 maximum = 0
-if (x == 1){
-	for a = 0, (N_NODES-1) {
-	if (maximum < vol_mem1[a].max()){
-	maximum = vol_mem1[a].max()
-	}
-	}
-}
-if (x == 2){
-	for a = 0, (N_NODES-1) {
-	if (maximum < vol_mem2[a].max()){
-	maximum = vol_mem2[a].max()
-	}
+
+if (whichfiber == 1){
+	for a=6, 12{
+		
+		if (maximum < vol_mem1[a].max()){
+		maximum = vol_mem1[a].max()
+		where = a
+		}
 	}
 }
 
+if (whichfiber == 2){
+	for b=6, 12{
+		
+		if (maximum < vol_mem2[b].max()){
+		maximum = vol_mem2[b].max()
+		where = b
+		}
+	}
+}
 return maximum
 }
 
-proc findIthreshA(){ //#1 is electrode position, #2 is fiber
+proc findIthreshA(){ local x,y //#1 is electrode position, #2 is fiber
 	x = $1
 	y = $2
 	stimulate(x)
 	cur_max = find_max(y)
 	
 	while (cur_max > 20.1 || cur_max < 19.9){
-		print "Trying Stimulus of ", AMPLITUDE
+		//print "Trying Stimulus of ", AMPLITUDE
 		if (cur_max < 19.9){
 		OLD_AMPLITUDE = AMPLITUDE
 		AMPLITUDE = (MAX_AMP+AMPLITUDE)/2
@@ -270,6 +281,7 @@ proc findIthreshA(){ //#1 is electrode position, #2 is fiber
 		}
 		stimulate(x)
 		cur_max = find_max(y)
+		//print "where ",where
 	}
 	print "Found one!"
 	if (x == 1 && y == 1){
@@ -289,26 +301,30 @@ proc findIthreshA(){ //#1 is electrode position, #2 is fiber
 
 // ----------------------- Debugging -----------------------------------------
 /*
-AMPLITUDE = -1e-1
-stimulate(2)
+where = 0
+resetGuesses(1e2)
+E2F_DIST2 = 1e0
+findIthreshA(1,1)
+print "found one at ", where
 objref p
 p = new Graph()
 p.size(0,tstop,0,20)
-vol_mem1[11].plot(p,dt,2,4)
+vol_mem1[0].plot(p,dt,2,4)
 */
 //------------------------RUN-------------------------------------------------
-print "Fiber 1 at internode"
-resetGuesses(-1e5)
 
-E2F_DIST1 = 1e1
-for count3 = 0,19 {
-E2F_DIST1 = Distances.x[count3]
-findIthresh(2,1)
-resetGuesses(-1e2)
-}
+/*
+objref sav1, sav2, sav3, sav4
+
+sav1 = new File()
+sav2 = new File()
+sav3 = new File()
+sav4 = new File()
+
 
 print "Fiber 2 at internode"
-resetGuesses(-1e5)
+resetGuesses(-1e2)
+sav4.wopen("d2_2.dat")
 
 E2F_DIST2 = 1e1
 for count4 = 0,19 {
@@ -316,8 +332,24 @@ E2F_DIST2 = Distances.x[count4]
 findIthresh(2,2)
 resetGuesses(-1e2)
 }
+Ithresh4.printf(sav4)
+sav4.close()
+
+print "Fiber 1 at internode"
+resetGuesses(-1e2)
+sav3.wopen("d2_1.dat")
+
+E2F_DIST1 = 1e1
+for count3 = 0,19 {
+E2F_DIST1 = Distances.x[count3]
+findIthresh(2,1)
+resetGuesses(-1e2)
+}
+Ithresh3.printf(sav3)
+sav3.close()
 
 print "Fiber 1 at the Node"
+sav1.wopen("d1_1.dat")
 resetGuesses(-1e2)
 E2F_DIST2 = 1e1
 for count1 = 0,19 {
@@ -325,8 +357,11 @@ E2F_DIST1 = Distances.x[count1]
 findIthresh(1,1)
 resetGuesses(-1e2)
 }
+Ithresh1.printf(sav1)
+sav1.close()
 
 print "Fiber 2 at the Node"
+sav2.wopen("d1_2.dat")
 resetGuesses(-1e2)
 
 E2F_DIST2 = 1e1
@@ -335,39 +370,139 @@ E2F_DIST2 = Distances.x[count2]
 findIthresh(1,2)
 resetGuesses(-1e2)
 }
-
-objref sav1, sav2, sav3, sav4
-
-sav1 = new File()
-sav2 = new File()
-sav3 = new File()
-sav4 = new File()
-
-sav1.wopen("d1_1.dat")
-sav2.wopen("d1_2.dat")
-sav3.wopen("d2_1.dat")
-sav4.wopen("d2_2.dat")
-
-
-Ithresh[0].printf(sav1)
-Ithresh[1].printf(sav2)
-Ithresh[2].printf(sav3)
-Ithresh[3].printf(sav4)
-
-sav1.close()
+Ithresh2.printf(sav2)
 sav2.close()
-sav3.close()
-sav4.close()
+*/
+
 
 print "Doing 2C"
 
 E2F_DIST2 = 1
 E2F_DIST1 = 1
-resetGuesses(1e6)
-findIthreshA(1,1)
-resetGuesses(1e6)
-findIthreshA(1,2)
-resetGuesses(1e6)
-findIthreshA(2,1)
-resetGuesses(1e6)
-findIthreshA(2,2)
+where = 0
+resetGuesses(-1e2)
+findIthresh(1,1)
+print "Fiber 1 nodal: Threshold current of ", AMPLITUDE
+print "Fiber 1 nodal: Found at ", where
+
+
+where = 0
+resetGuesses(-1e2)
+findIthresh(1,2)
+print "Fiber 2 nodal: Threshold current of ", AMPLITUDE
+print "Fiber 2 nodal: Found at ", where
+
+where = 0
+resetGuesses(-1e2)
+findIthresh(2,1)
+print "Fiber 1 internodal: Threshold current of ", AMPLITUDE
+print "Fiber 1 internodal: Found at ", where
+
+where = 0
+resetGuesses(-1e2)
+findIthresh(2,2)
+print "Fiber 2 internodal: Threshold current of ", AMPLITUDE
+print "Fiber 2 internodal: Found at ", where
+where = 0
+
+
+print "Doing 2D"
+//Note: run one at a time or plotting won't work
+
+/*
+
+objref forfit1
+forfit1 = new File()
+forfit1.wopen("forfit1.dat")
+where = 0
+resetGuesses(-1e2)
+E2F_DIST1 = 1e-1
+findIthresh(1,1)
+print "found one at ", where
+objref p1
+p1 = new Graph()
+p1.size(0,tstop,0,20)
+vol_mem1[10].plot(p1,dt,2,4)
+vol_mem1[10].printf(forfit1)
+forfit1.close()
+
+objref forfit2
+forfit2 = new File()
+forfit2.wopen("forfit2.dat")
+where = 0
+resetGuesses(-1e2)
+E2F_DIST1 = 1e0
+findIthresh(1,1)
+print "found one at ", where
+objref p2
+p2 = new Graph()
+p2.size(0,tstop,0,20)
+vol_mem1[10].plot(p2,dt,2,4)
+vol_mem1[10].printf(forfit2)
+forfit2.close()
+
+objref forfit3
+forfit3 = new File()
+forfit3.wopen("forfit3.dat")
+
+where = 0
+resetGuesses(-1e2)
+E2F_DIST1 = 1e1
+findIthresh(1,1)
+print "found one at ", where
+objref p3
+p3 = new Graph()
+p3.size(0,tstop,0,20)
+vol_mem1[10].plot(p3,dt,2,4)
+vol_mem1[10].printf(forfit3)
+forfit3.close()
+
+
+objref forfit4
+forfit4 = new File()
+forfit4.wopen("forfit4.dat")
+
+where = 0
+resetGuesses(-1e2)
+E2F_DIST2 = 1e-1
+findIthresh(1,2)
+print "found one at ", where
+objref p4
+p4 = new Graph()
+p4.size(0,tstop,0,20)
+vol_mem2[10].plot(p4,dt,2,4)
+vol_mem2[10].printf(forfit4)
+forfit4.close()
+
+objref forfit5
+forfit5 = new File()
+forfit5.wopen("forfit5.dat")
+
+where = 0
+resetGuesses(-1e2)
+E2F_DIST2 = 1e0
+findIthresh(1,2)
+print "found one at ", where
+objref p5
+p5 = new Graph()
+p5.size(0,tstop,0,20)
+vol_mem2[10].plot(p5,dt,2,4)
+vol_mem2[10].printf(forfit5)
+forfit5.close()
+
+objref forfit6
+forfit6 = new File()
+forfit6.wopen("forfit6.dat")
+
+where = 0
+resetGuesses(-1e2)
+E2F_DIST2 = 1e1
+findIthresh(1,2)
+print "found one at ", where
+objref p6
+p6 = new Graph()
+p6.size(0,tstop,0,20)
+vol_mem2[10].plot(p6,dt,2,4)
+vol_mem2[10].printf(forfit6)
+forfit6.close()
+*/

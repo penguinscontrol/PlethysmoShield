@@ -25,7 +25,9 @@ LiquidCrystal lcd(8, 9, 4, 5, 6, 7);
 //Define input pins
 int btnPin = 0;
 int plePin = 1;
-
+// 
+int ledPin = 3;
+int drive = 255;
 //Button presses
 int lcd_key = 0; // what button is being pressed?
 int adc_key_in = 0; // what voltage is being applied to button pin?
@@ -57,11 +59,15 @@ int lastVal = 0;
 int dcurVal = 0;
 
 Statistics dsig_sta(WL); // statistics on derivative of signal
+Statistics sig_sta(WL);
 
 int beat_times[WL/10]; // times of beats
 int t_ind = 0;
 
 double thresh = 200; // Threshold for beat detection
+
+int setpoint = 768;
+int err = 0;
 
 void setup()
 {
@@ -77,6 +83,7 @@ void setup()
     curVal = analogRead(plePin);
     dcurVal = curVal-lastVal;
     dsig_sta.addData(double(dcurVal));
+    sig_sta.addData(double(curVal));
     delay(TS);
   }
 
@@ -90,6 +97,9 @@ void loop()
   switch(select) {
   case 0:
     {
+      //analogWrite(ledPin,drive);
+      analogWrite(ledPin,255);
+      update_sig();
       // Print Message
       lcd.setCursor(0,0);
       lcd.print("HRMon");
@@ -99,7 +109,8 @@ void loop()
       curVal = analogRead(plePin);
       dcurVal = curVal-lastVal;
       dsig_sta.addData(double(dcurVal));
-
+      sig_sta.addData(double(curVal));
+      
       checkForBeats();
       if (millis()>last_updated+1000){
         updateHR();
@@ -125,7 +136,15 @@ void loop()
     }
   }
 }
-
+void update_sig(){
+  err = double(setpoint) - sig_sta.mean() - 3*dsig_sta.stdDeviation();
+  if (err > 10) {
+    drive++;
+  }
+  else if (err < -10){
+    drive--;
+  }
+}
 void updateHR(){
   int beats = 0;
    
@@ -143,7 +162,7 @@ void updateHR(){
 
 void checkForBeats(){
 
-  isbeating = dcurVal > thresh;
+  isbeating = dcurVal > thresh; // did I just cross the threshold?
   if (isbeating && !isflashing && millis() > t_flash+200 ) {
     isflashing = 1;
 
